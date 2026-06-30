@@ -1,9 +1,18 @@
-# Burncode
+<h1 align="center">🔥 Burncode</h1>
 
-A tactical desktop client for local [opencode](https://opencode.ai) servers.
-Built with Tauri v2, Rust, and Vue 3.
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/b5fd6b34-6338-4f3f-be34-c8cc4687723e"
+    alt="Burncode logo"
+    width="700"
+  />
+</p>
 
-Token in → exhaust out. Prompts ignite, models fire, tokens burn.
+<p align="center">
+  <strong>A tactical desktop client for local opencode servers.</strong><br>
+  Built with Tauri v2, Rust, and Vue 3.
+  Token in → exhaust out. Prompts ignite, models fire, tokens burn.
+</p>
 
 ## Features
 
