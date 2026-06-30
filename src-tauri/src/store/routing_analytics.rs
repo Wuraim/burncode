@@ -45,6 +45,16 @@ pub struct ProviderQuotaConfig {
     pub used_budget: f64,
     #[serde(default)]
     pub used_tokens: u64,
+    #[serde(default)]
+    pub period_type: Option<QuotaPeriod>,
+    #[serde(default)]
+    pub period_start_ms: Option<u64>,
+    #[serde(default)]
+    pub period_cap_requests: Option<u64>,
+    #[serde(default)]
+    pub period_cap_budget: Option<f64>,
+    #[serde(default)]
+    pub period_cap_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -54,6 +64,13 @@ pub enum QuotaSource {
     Estimated,
     Manual,
     Live,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuotaPeriod {
+    Daily,
+    Monthly,
 }
 
 impl RoutingAnalytics {
@@ -68,6 +85,29 @@ impl RoutingAnalytics {
             .unwrap_or_default()
     }
 
+    pub fn check_period_reset(&mut self) {
+        let now = now_ms();
+        for quota in self.provider_quotas.values_mut() {
+            let Some(ref ptype) = quota.period_type else { continue };
+            let Some(start) = quota.period_start_ms else { continue };
+            let period_ms: u64 = match ptype {
+                QuotaPeriod::Daily => 24 * 3600 * 1000,
+                QuotaPeriod::Monthly => 30 * 24 * 3600 * 1000,
+            };
+            if now >= start.saturating_add(period_ms) {
+                quota.used_requests = 0;
+                quota.used_budget = 0.0;
+                quota.used_tokens = 0;
+                quota.period_start_ms = Some(now);
+                // Reset period caps to the current manual caps
+                quota.period_cap_requests = quota.requests_cap;
+                quota.period_cap_budget = quota.budget_cap;
+                quota.period_cap_tokens = quota.tokens_cap;
+                quota.source = QuotaSource::Manual;
+            }
+        }
+    }
+
     pub fn record_outcome(
         &mut self,
         provider_id: &str,
@@ -80,6 +120,7 @@ impl RoutingAnalytics {
         latency_ms: u64,
         difficulty: &str,
     ) {
+        self.check_period_reset();
         let key = Self::key(provider_id, model_id);
         let stats = self.models.entry(key).or_default();
         stats.requests += 1;
@@ -113,12 +154,20 @@ impl RoutingAnalytics {
         requests_cap: Option<u64>,
         budget_cap: Option<f64>,
         tokens_cap: Option<u64>,
+        period_type: Option<QuotaPeriod>,
     ) {
         let quota = self.provider_quotas.entry(provider_id.to_string()).or_default();
         quota.requests_cap = requests_cap.or(quota.requests_cap);
         quota.budget_cap = budget_cap.or(quota.budget_cap);
         quota.tokens_cap = tokens_cap.or(quota.tokens_cap);
         quota.source = QuotaSource::Manual;
+        if let Some(pt) = period_type {
+            quota.period_type = Some(pt);
+            quota.period_start_ms = Some(now_ms());
+            quota.period_cap_requests = quota.requests_cap;
+            quota.period_cap_budget = quota.budget_cap;
+            quota.period_cap_tokens = quota.tokens_cap;
+        }
     }
 }
 

@@ -10,11 +10,13 @@ import CommandPalette from "../components/shell/CommandPalette.vue";
 import { useWorkspaceStore } from "../stores/workspace";
 import { useConnectionStore } from "../stores/connection";
 import { useSessionStore } from "../stores/session";
+import { useProvidersStore } from "../stores/providers";
 import { ref, onMounted, onUnmounted } from "vue";
 
 const workspace = useWorkspaceStore();
 const connection = useConnectionStore();
 const session = useSessionStore();
+const providersStore = useProvidersStore();
 const showCommandPalette = ref(false);
 
 function onGlobalKeydown(e: KeyboardEvent) {
@@ -30,11 +32,14 @@ onMounted(async () => {
     const first = workspace.sessions[0] as { id?: string };
     if (first.id) await session.openSession(first.id);
   }
+  await providersStore.refresh();
+  providersStore.startPolling(60000);
   window.addEventListener("keydown", onGlobalKeydown);
 });
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
+  providersStore.stopPolling();
 });
 </script>
 

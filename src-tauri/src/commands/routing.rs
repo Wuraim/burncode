@@ -1,5 +1,5 @@
 use crate::app::state::AppState;
-use crate::store::routing_analytics::RoutingAnalytics;
+use crate::store::routing_analytics::{QuotaPeriod, RoutingAnalytics};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -67,15 +67,25 @@ pub async fn set_provider_quota(
     requests_cap: Option<u64>,
     budget_cap: Option<f64>,
     tokens_cap: Option<u64>,
+    period_type: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let analytics_store = {
         let guard = state.lock().await;
         guard.analytics_store.clone()
     };
+    let parsed_period = period_type.as_deref().and_then(|s| match s {
+        "daily" => Some(QuotaPeriod::Daily),
+        "monthly" => Some(QuotaPeriod::Monthly),
+        _ => None,
+    });
     let mut guard = state.lock().await;
-    guard
-        .analytics
-        .set_quota(&provider_id, requests_cap, budget_cap, tokens_cap);
+    guard.analytics.set_quota(
+        &provider_id,
+        requests_cap,
+        budget_cap,
+        tokens_cap,
+        parsed_period,
+    );
     analytics_store.save(&guard.analytics).await
 }

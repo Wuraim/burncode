@@ -20,6 +20,6 @@ import TelemetryPanel from "../telemetry/TelemetryPanel.vue";
   border-left: 1px solid var(--bc-border);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 </style>

@@ -62,6 +62,54 @@ export interface ProviderQuotaConfig {
   used_requests: number;
   used_budget: number;
   used_tokens: number;
+  period_type?: "daily" | "monthly";
+  period_start_ms?: number;
+  period_cap_requests?: number;
+  period_cap_budget?: number;
+  period_cap_tokens?: number;
+}
+
+export interface ModelCapabilities {
+  toolcall: boolean;
+  reasoning: boolean;
+  attachment: boolean;
+  input: { text: boolean; audio: boolean; image: boolean; video: boolean; pdf: boolean };
+  output: { text: boolean; audio: boolean; image: boolean; video: boolean; pdf: boolean };
+}
+
+export interface ModelCost {
+  input: number;
+  output: number;
+  cache: { read: number; write: number };
+}
+
+export interface ModelLimit {
+  context: number;
+  output: number;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  status: string;
+  capabilities: ModelCapabilities;
+  cost: ModelCost;
+  limit: ModelLimit;
+}
+
+export interface ProviderModelInfo extends ModelInfo {
+  usage: ModelUsageStats | null;
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  connected: boolean;
+  defaultModel: string;
+  models: ProviderModelInfo[];
+  quota: ProviderQuotaConfig;
+  authMethods: ProviderAuthMethod[];
+  aggregateUsage: ModelUsageStats;
 }
 
 export interface RoutingAnalytics {

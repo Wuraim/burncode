@@ -2,35 +2,32 @@
 import { ref, computed } from "vue";
 import { invokeCommand } from "../../services/tauri";
 import { useSessionStore } from "../../stores/session";
-import type { RouteConfig, ProviderQuotaConfig } from "../../types/app";
+import { useProvidersStore } from "../../stores/providers";
+import type { RouteConfig } from "../../types/app";
 
 const session = useSessionStore();
+const providersStore = useProvidersStore();
 const open = ref(false);
 const config = ref<RouteConfig | null>(null);
 const loading = ref(false);
 
+const pinnedIds = ["openai", "opencode"];
+
 const connectedProviders = computed(() => {
   const data = config.value?.providers as { connected?: string[]; default?: Record<string, string> } | undefined;
+  const all = data?.connected ?? [];
+  const defaults = data?.default ?? {};
+  const filtered = all.filter((id) => pinnedIds.includes(id));
   return {
-    connected: data?.connected ?? [],
-    defaults: data?.default ?? {},
+    connected: filtered,
+    defaults,
   };
 });
 
-const pinnedQuotas = computed(() => {
-  const pinned = config.value?.pinned_providers ?? [];
-  return pinned.map((id) => ({
-    id,
-    quota: (config.value?.analytics.provider_quotas as Record<string, ProviderQuotaConfig> | undefined)?.[id] ?? {
-      source: "estimated",
-      used_requests: 0,
-      used_budget: 0,
-      used_tokens: 0,
-    },
-  }));
+const modelKeys = computed(() => {
+  const all = Object.keys(config.value?.analytics.models ?? {});
+  return all.filter((key) => pinnedIds.some((pid) => key.startsWith(pid + "/")));
 });
-
-const modelKeys = computed(() => Object.keys(config.value?.analytics.models ?? {}));
 
 async function toggle() {
   open.value = !open.value;
@@ -43,18 +40,18 @@ async function loadConfig() {
   loading.value = true;
   try {
     config.value = await invokeCommand<RouteConfig>("get_route_config");
+    await providersStore.refresh();
   } finally {
     loading.value = false;
   }
 }
 
-async function setQuota(providerId: string, requestsCap: number | undefined) {
-  await invokeCommand("set_provider_quota", {
-    providerId,
-    requestsCap: requestsCap ?? null,
-    budgetCap: null,
-    tokensCap: null,
-  });
+async function setQuota(
+  providerId: string,
+  requestsCap: number | undefined,
+  periodType?: "daily" | "monthly"
+) {
+  await providersStore.setQuota(providerId, requestsCap, undefined, undefined, periodType);
   await loadConfig();
 }
 
@@ -90,7 +87,7 @@ function usagePercent(used: number, cap?: number) {
         </div>
 
         <div class="section">
-          <div class="title">Connected providers</div>
+          <div class="title">Active providers</div>
           <div v-if="connectedProviders.connected.length === 0" class="text dim">None connected</div>
           <ul v-else class="list">
             <li v-for="p in connectedProviders.connected" :key="p">
@@ -102,27 +99,39 @@ function usagePercent(used: number, cap?: number) {
 
         <div class="section">
           <div class="title">Pinned provider quotas</div>
-          <div v-for="item in pinnedQuotas" :key="item.id" class="quota-row">
+          <div v-for="p in providersStore.pinnedProviders" :key="p.id" class="quota-row">
             <div class="quota-header">
-              <span class="badge">{{ item.id }}</span>
-              <span class="source">{{ item.quota.source }}</span>
+              <span class="badge">{{ p.id }}</span>
+              <span class="source">{{ p.quota.source }}</span>
+              <span v-if="p.quota.period_type" class="source period">{{ p.quota.period_type }}</span>
             </div>
             <div class="quota-bar-wrap">
               <div
                 class="quota-bar"
-                :style="{ width: usagePercent(item.quota.used_requests, item.quota.requests_cap) + '%' }"
+                :style="{ width: usagePercent(p.quota.used_requests, p.quota.period_cap_requests || p.quota.requests_cap) + '%' }"
               ></div>
             </div>
             <div class="quota-meta">
-              {{ item.quota.used_requests }} / {{ item.quota.requests_cap ?? "∞" }} requests
+              {{ p.quota.used_requests }} / {{ p.quota.period_cap_requests || p.quota.requests_cap || "∞" }} requests
             </div>
             <div class="quota-input">
               <input
                 type="number"
-                placeholder="manual request cap"
-                :value="item.quota.requests_cap"
-                @change="setQuota(item.id, ($event.target as HTMLInputElement).valueAsNumber || undefined)"
+                placeholder="daily/monthly cap"
+                :value="p.quota.requests_cap"
+                @change="setQuota(p.id, ($event.target as HTMLInputElement).valueAsNumber || undefined, undefined)"
               />
+            </div>
+            <div class="quota-period">
+              <label>Period</label>
+              <select
+                :value="p.quota.period_type || ''"
+                @change="setQuota(p.id, p.quota.requests_cap, ($event.target as HTMLSelectElement).value as 'daily' | 'monthly' | undefined)"
+              >
+                <option value="">none</option>
+                <option value="daily">daily</option>
+                <option value="monthly">monthly</option>
+              </select>
             </div>
           </div>
         </div>
@@ -300,6 +309,12 @@ button.small {
   color: var(--bc-text-dim);
   text-transform: uppercase;
 }
+.source.period {
+  border-color: var(--bc-violet);
+  color: var(--bc-violet);
+  border: 1px solid var(--bc-border);
+  padding: 0 3px;
+}
 .quota-bar-wrap {
   height: 4px;
   background: var(--bc-border);
@@ -312,6 +327,23 @@ button.small {
   font-size: 11px;
   color: var(--bc-text-muted);
   font-family: var(--bc-font-mono);
+}
+.quota-period {
+  display: flex;
+  gap: var(--bc-space-sm);
+  align-items: center;
+  margin-top: var(--bc-space-xs);
+}
+.quota-period label {
+  font-size: 10px;
+  color: var(--bc-text-dim);
+}
+.quota-period select {
+  background: var(--bc-bg);
+  border: 1px solid var(--bc-border);
+  color: var(--bc-text);
+  padding: var(--bc-space-xs) var(--bc-space-sm);
+  font-size: 11px;
 }
 .quota-input input {
   width: 100%;

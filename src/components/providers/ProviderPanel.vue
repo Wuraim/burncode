@@ -1,44 +1,28 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
-import { invokeCommand } from "../../services/tauri";
-import { useWorkspaceStore } from "../../stores/workspace";
-import type { ProviderAuthMethod, RouteConfig, ProviderQuotaConfig } from "../../types/app";
+import { ref } from "vue";
+import { useProvidersStore } from "../../stores/providers";
+import type { ModelUsageStats } from "../../types/app";
 
-const workspace = useWorkspaceStore();
-const PINNED = ["openai", "opencode"];
+const providers = useProvidersStore();
 
 const showMore = ref(false);
 const showAuth = ref(false);
 const authProvider = ref<string>("");
-const authMethods = ref<Record<string, ProviderAuthMethod[]>>({});
 const apiKey = ref("");
-const loading = ref(false);
 const message = ref<string | null>(null);
-const routeConfig = ref<RouteConfig | null>(null);
+const expandedProvider = ref<string | null>(null);
 
-onMounted(() => {
-  loadRouteConfig();
-});
-
-async function loadRouteConfig() {
-  try {
-    routeConfig.value = await invokeCommand<RouteConfig>("get_route_config");
-  } catch {
-    // ignore; panel still works without analytics
-  }
+function aggSummary(u: ModelUsageStats): string {
+  if (u.requests === 0) return "No usage yet";
+  const pct = u.requests > 0 ? Math.round((u.successes / u.requests) * 100) : 0;
+  return `${u.requests} req · ${pct}% ok · $${u.total_cost.toFixed(3)} · ${(u.total_input_tokens + u.total_output_tokens + u.total_reasoning_tokens).toLocaleString()} tokens`;
 }
 
-function quota(providerId: string): ProviderQuotaConfig {
-  return (
-    (routeConfig.value?.analytics.provider_quotas as Record<string, ProviderQuotaConfig> | undefined)?.[
-      providerId
-    ] ?? {
-      source: "estimated",
-      used_requests: 0,
-      used_budget: 0,
-      used_tokens: 0,
-    }
-  );
+function modelUsageSummary(u: ModelUsageStats | null): string {
+  if (!u || u.requests === 0) return "never used";
+  const pct = Math.round((u.successes / u.requests) * 100);
+  const tokens = u.total_input_tokens + u.total_output_tokens + u.total_reasoning_tokens;
+  return `${u.requests} req · ${pct}% · $${u.total_cost.toFixed(3)} · ${tokens.toLocaleString()} tok`;
 }
 
 function usagePercent(used: number, cap?: number) {
@@ -46,62 +30,27 @@ function usagePercent(used: number, cap?: number) {
   return Math.min(100, Math.round((used / cap) * 100));
 }
 
-const providers = computed(() => {
-  const data = workspace.providers as { all?: unknown[]; connected?: string[]; default?: Record<string, string> } | null;
-  const all = (data?.all ?? []) as { id?: string; name?: string }[];
-  const connected = new Set(data?.connected ?? []);
-  const defaults = data?.default ?? {};
-  return all.map((p) => ({
-    id: p.id || "unknown",
-    name: p.name || p.id || "unknown",
-    connected: connected.has(p.id || ""),
-    defaultModel: (defaults as Record<string, string>)[p.id || ""] || "",
-  }));
-});
-
-const pinned = computed(() => providers.value.filter((p) => PINNED.includes(p.id)));
-const others = computed(() => providers.value.filter((p) => !PINNED.includes(p.id)));
-
 function openAuth(providerId: string) {
   authProvider.value = providerId;
   apiKey.value = "";
   message.value = null;
   showAuth.value = true;
-  loadAuthMethods();
 }
-
-async function loadAuthMethods() {
-  if (!authProvider.value) return;
-  try {
-    const methods = await invokeCommand<Record<string, ProviderAuthMethod[]>>("list_provider_auth_methods");
-    authMethods.value = methods;
-  } catch (e) {
-    message.value = String(e);
-  }
-}
-
-const currentMethods = computed(() => {
-  return authMethods.value[authProvider.value] ?? [];
-});
-
-const apiMethod = computed(() => currentMethods.value.find((m) => m.type === "api"));
 
 async function submitAuth() {
-  if (!authProvider.value || !apiMethod.value) return;
-  loading.value = true;
+  if (!authProvider.value || !apiKey.value) return;
   message.value = null;
   try {
-    await invokeCommand("set_provider_auth", {
-      providerId: authProvider.value,
-      body: { type: "api", key: apiKey.value },
-    });
+    await providers.connectProvider(authProvider.value, apiKey.value);
     message.value = "Connected";
-    await workspace.loadProviders();
+    showAuth.value = false;
   } catch (e) {
     message.value = String(e);
-  } finally {
-    loading.value = false;
   }
+}
+
+function toggleModels(id: string) {
+  expandedProvider.value = expandedProvider.value === id ? null : id;
 }
 </script>
 
@@ -110,24 +59,51 @@ async function submitAuth() {
     <div class="title">Providers</div>
 
     <ul class="list">
-      <li v-for="p in pinned" :key="p.id" class="row pinned">
+      <li v-for="p in providers.pinnedProviders" :key="p.id" class="row pinned" @click="toggleModels(p.id)">
         <div class="main">
           <span class="dot" :class="{ active: p.connected }"></span>
           <span class="name">{{ p.name }}</span>
-          <button class="small" @click="openAuth(p.id)">{{ p.connected ? "Manage" : "Connect" }}</button>
+          <button
+            v-if="!p.connected"
+            class="small"
+            @click.stop="openAuth(p.id)"
+          >
+            Connect
+          </button>
+          <span v-else class="live-badge">LIVE</span>
         </div>
+
+        <!-- Aggregate usage -->
+        <div class="agg-usage">{{ aggSummary(p.aggregateUsage) }}</div>
+
+        <!-- Quota bar -->
         <div class="meta">
           <span v-if="p.defaultModel" class="model">{{ p.defaultModel }}</span>
-          <span class="source">{{ quota(p.id).source }}</span>
+          <span class="source">{{ p.quota.source }}</span>
+          <span v-if="p.quota.period_type" class="source period">{{ p.quota.period_type }}</span>
         </div>
         <div class="quota-bar-wrap">
           <div
             class="quota-bar"
-            :style="{ width: usagePercent(quota(p.id).used_requests, quota(p.id).requests_cap) + '%' }"
+            :style="{ width: usagePercent(p.quota.used_requests, p.quota.period_cap_requests || p.quota.requests_cap) + '%' }"
           ></div>
         </div>
         <div class="quota-meta">
-          {{ quota(p.id).used_requests }} / {{ quota(p.id).requests_cap ?? "∞" }} requests
+          {{ p.quota.used_requests }}
+          / {{ p.quota.period_cap_requests || p.quota.requests_cap || "∞" }} requests
+        </div>
+
+        <!-- Expandable model list -->
+        <div v-if="expandedProvider === p.id && p.models.length > 0" class="model-list">
+          <div v-for="m in p.models" :key="m.id" class="model-item" :class="{ unused: !m.usage || m.usage.requests === 0 }">
+            <div class="model-name">{{ m.name }}</div>
+            <div class="model-details">
+              <span class="status" :class="m.status">{{ m.status }}</span>
+              <span class="ctx">{{ m.limit?.context ? (m.limit.context / 1000).toFixed(0) + 'k' : '' }}</span>
+            </div>
+            <div class="model-usage">{{ modelUsageSummary(m.usage) }}</div>
+          </div>
+          <div v-if="p.models.length === 0" class="empty">No models loaded</div>
         </div>
       </li>
     </ul>
@@ -137,27 +113,22 @@ async function submitAuth() {
     </button>
 
     <ul v-if="showMore" class="list more">
-      <li v-for="p in others" :key="p.id" class="row">
+      <li v-for="p in providers.otherProviders" :key="p.id" class="row">
         <span class="dot" :class="{ active: p.connected }"></span>
         <span class="name">{{ p.name }}</span>
-        <button class="small" @click="openAuth(p.id)">{{ p.connected ? "Manage" : "Connect" }}</button>
+        <button v-if="!p.connected" class="small" @click="openAuth(p.id)">Connect</button>
+        <span v-else class="live-badge">LIVE</span>
       </li>
-      <li v-if="others.length === 0" class="empty">No other providers</li>
+      <li v-if="providers.otherProviders.length === 0" class="empty">No other providers</li>
     </ul>
 
     <div v-if="showAuth" class="auth-form">
       <div class="auth-title">Connect {{ authProvider }}</div>
-      <div v-if="apiMethod" class="field">
-        <label>{{ apiMethod.label }}</label>
+      <div class="field">
+        <label>API key</label>
         <input v-model="apiKey" type="password" placeholder="API key" />
       </div>
-      <div v-else-if="currentMethods.length > 0" class="methods">
-        <div v-for="m in currentMethods" :key="m.type" class="method">{{ m.label }}</div>
-      </div>
-      <div v-else class="empty">No auth method loaded</div>
-      <button v-if="apiMethod" class="primary small" :disabled="loading || !apiKey" @click="submitAuth">
-        Submit
-      </button>
+      <button class="primary small" :disabled="!apiKey" @click="submitAuth">Submit</button>
       <div v-if="message" class="message">{{ message }}</div>
     </div>
   </div>
@@ -194,6 +165,7 @@ async function submitAuth() {
   padding: var(--bc-space-sm);
   border: 1px solid var(--bc-border);
   background: var(--bc-panel-2);
+  cursor: pointer;
 }
 .main {
   display: flex;
@@ -215,11 +187,27 @@ async function submitAuth() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--bc-text);
+}
+.live-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border: 1px solid var(--bc-success);
+  color: var(--bc-success);
+  text-transform: uppercase;
+}
+.agg-usage {
+  font-size: 10px;
+  color: var(--bc-text-dim);
+  font-family: var(--bc-font-mono);
+  margin-top: var(--bc-space-xs);
 }
 .meta {
   display: flex;
   gap: var(--bc-space-sm);
   align-items: center;
+  margin-top: var(--bc-space-xs);
 }
 .model {
   font-size: 10px;
@@ -232,6 +220,10 @@ async function submitAuth() {
   text-transform: uppercase;
   border: 1px solid var(--bc-border);
   padding: 0 3px;
+}
+.source.period {
+  border-color: var(--bc-violet);
+  color: var(--bc-violet);
 }
 button.small {
   font-size: 10px;
@@ -281,15 +273,6 @@ button.small {
   padding: var(--bc-space-sm);
   font-size: 12px;
 }
-.methods {
-  display: flex;
-  flex-direction: column;
-  gap: var(--bc-space-xs);
-}
-.method {
-  font-size: 12px;
-  color: var(--bc-text-muted);
-}
 .empty {
   color: var(--bc-text-dim);
   font-size: 12px;
@@ -310,5 +293,63 @@ button.small {
   font-size: 10px;
   color: var(--bc-text-dim);
   font-family: var(--bc-font-mono);
+}
+.model-list {
+  margin-top: var(--bc-space-sm);
+  padding: var(--bc-space-sm);
+  background: var(--bc-bg);
+  border: 1px solid var(--bc-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-xs);
+}
+.model-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  gap: var(--bc-space-xs);
+}
+.model-item.unused {
+  opacity: 0.5;
+}
+.model-name {
+  font-family: var(--bc-font-mono);
+  color: var(--bc-text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-details {
+  display: flex;
+  gap: var(--bc-space-sm);
+  align-items: center;
+}
+.model-usage {
+  font-size: 10px;
+  color: var(--bc-text-dim);
+  font-family: var(--bc-font-mono);
+  width: 100%;
+  margin-top: var(--bc-space-xs);
+}
+.status {
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 1px 3px;
+  border: 1px solid var(--bc-border);
+}
+.status.active {
+  border-color: var(--bc-success);
+  color: var(--bc-success);
+}
+.status.beta {
+  border-color: var(--bc-flame);
+  color: var(--bc-flame);
+}
+.ctx {
+  font-size: 10px;
+  color: var(--bc-text-dim);
 }
 </style>
