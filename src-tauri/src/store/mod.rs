@@ -1,3 +1,4 @@
+pub mod routing_analytics;
 pub mod settings;
 
 use crate::store::settings::{settings_path, AppSettings};
@@ -7,6 +8,8 @@ use std::path::PathBuf;
 pub struct SettingsStore {
     pub config_dir: PathBuf,
 }
+
+
 
 impl SettingsStore {
     pub fn new(config_dir: PathBuf) -> Self {

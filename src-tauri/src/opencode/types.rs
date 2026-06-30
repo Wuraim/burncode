@@ -12,6 +12,8 @@ pub struct SendPromptRequest {
     pub parts: Vec<PromptPart>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +21,17 @@ pub struct PromptPart {
     #[serde(rename = "type")]
     pub part_type: String,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteCommandRequest {
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

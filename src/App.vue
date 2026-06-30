@@ -4,12 +4,15 @@ import ConnectPage from "./pages/ConnectPage.vue";
 import WorkspacePage from "./pages/WorkspacePage.vue";
 import { useConnectionStore } from "./stores/connection";
 import { useTelemetryStore } from "./stores/telemetry";
+import { useStreamingStore } from "./stores/streaming";
 
 const connection = useConnectionStore();
 const telemetry = useTelemetryStore();
+const streaming = useStreamingStore();
 
 onMounted(async () => {
   telemetry.startListening();
+  streaming.startListening();
   await connection.loadSettings();
 });
 </script>

@@ -1,19 +1,40 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
 import LeftRail from "../components/shell/LeftRail.vue";
 import RightRail from "../components/shell/RightRail.vue";
+import SessionSwitcher from "../components/shell/SessionSwitcher.vue";
+import RouteConfigPanel from "../components/shell/RouteConfigPanel.vue";
 import SessionStream from "../components/session/SessionStream.vue";
 import PromptComposer from "../components/session/PromptComposer.vue";
-import ActivityTimeline from "../components/session/ActivityTimeline.vue";
 import DiffPanel from "../components/diff/DiffPanel.vue";
+import CommandPalette from "../components/shell/CommandPalette.vue";
 import { useWorkspaceStore } from "../stores/workspace";
 import { useConnectionStore } from "../stores/connection";
+import { useSessionStore } from "../stores/session";
+import { ref, onMounted, onUnmounted } from "vue";
 
 const workspace = useWorkspaceStore();
 const connection = useConnectionStore();
+const session = useSessionStore();
+const showCommandPalette = ref(false);
 
-onMounted(() => {
-  workspace.loadAll();
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    showCommandPalette.value = true;
+  }
+}
+
+onMounted(async () => {
+  await workspace.loadAll();
+  if (!session.currentSession && workspace.sessions.length > 0) {
+    const first = workspace.sessions[0] as { id?: string };
+    if (first.id) await session.openSession(first.id);
+  }
+  window.addEventListener("keydown", onGlobalKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("keydown", onGlobalKeydown);
 });
 </script>
 
@@ -21,6 +42,10 @@ onMounted(() => {
   <div class="workspace">
     <div class="topbar">
       <div class="brand">BURNCODE</div>
+      <div class="center-controls">
+        <SessionSwitcher />
+        <RouteConfigPanel />
+      </div>
       <div class="status">
         <span v-if="connection.serverVersion" class="version">
           opencode {{ connection.serverVersion }}
@@ -32,12 +57,15 @@ onMounted(() => {
       <LeftRail />
       <main class="center">
         <SessionStream />
-        <ActivityTimeline />
         <DiffPanel />
         <PromptComposer />
       </main>
       <RightRail />
     </div>
+    <CommandPalette
+      v-if="showCommandPalette"
+      @close="showCommandPalette = false"
+    />
   </div>
 </template>
 
@@ -66,6 +94,11 @@ onMounted(() => {
   background: linear-gradient(90deg, var(--bc-core), var(--bc-violet));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+.center-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-md);
 }
 .status {
   display: flex;

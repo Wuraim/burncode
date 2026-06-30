@@ -1,13 +1,8 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { invokeCommand } from "../services/tauri";
-
-export interface RouteDecision {
-  provider_id: string;
-  model_id: string;
-  difficulty: string;
-  reason: string;
-}
+import { useStreamingStore } from "./streaming";
+import type { RouteDecision } from "../types/app";
 
 export const useSessionStore = defineStore("session", () => {
   const currentSession = ref<unknown>(null);
@@ -39,7 +34,7 @@ export const useSessionStore = defineStore("session", () => {
     diff.value = (await invokeCommand<unknown[]>("get_diff", { id })) ?? [];
   }
 
-  async function sendPrompt(text: string) {
+  async function sendPrompt(text: string, agent?: string) {
     const session = currentSession.value as { id?: string } | null;
     if (!session?.id) return;
     sending.value = true;
@@ -51,6 +46,7 @@ export const useSessionStore = defineStore("session", () => {
         text,
         provider_id: route.value?.provider_id || null,
         model_id: route.value?.model_id || null,
+        agent: agent || null,
       });
       await loadMessages(session.id);
       await loadTodos(session.id);
@@ -63,6 +59,55 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function sendPromptAsync(text: string, agent?: string) {
+    const ses = currentSession.value as { id?: string } | null;
+    if (!ses?.id) return;
+    sending.value = true;
+    error.value = null;
+
+    const streaming = useStreamingStore();
+
+    try {
+      await suggestRoute(text);
+      streaming.startStreaming(ses.id, text, route.value);
+      await invokeCommand("send_prompt_async", {
+        id: ses.id,
+        text,
+        provider_id: route.value?.provider_id || null,
+        model_id: route.value?.model_id || null,
+        agent: agent || null,
+      });
+      // Streaming will be finalized by the SSE handler via streaming store
+    } catch (e) {
+      streaming.finishStreaming();
+      error.value = String(e);
+      throw e;
+    } finally {
+      sending.value = false;
+    }
+  }
+
+  async function forkSession(sessionId: string, messageId?: string) {
+    const created = await invokeCommand("fork_session", {
+      id: sessionId,
+      messageId: messageId || null,
+    });
+    const { useWorkspaceStore } = await import("./workspace");
+    await useWorkspaceStore().loadSessions();
+    const newId = (created as { id?: string }).id;
+    if (newId) await openSession(newId);
+  }
+
+  async function abortSession(id: string) {
+    await invokeCommand("abort_session", { id });
+  }
+
+  async function finalizeStreamingAndReload() {
+    const ses = currentSession.value as { id?: string } | null;
+    if (!ses?.id) return;
+    await Promise.all([loadMessages(ses.id), loadTodos(ses.id), loadDiff(ses.id)]);
+  }
+
   return {
     currentSession,
     messages,
@@ -73,7 +118,11 @@ export const useSessionStore = defineStore("session", () => {
     route,
     openSession,
     sendPrompt,
+    sendPromptAsync,
     suggestRoute,
+    abortSession,
+    forkSession,
+    finalizeStreamingAndReload,
     loadTodos,
     loadDiff,
   };

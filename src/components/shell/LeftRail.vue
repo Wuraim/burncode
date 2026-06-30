@@ -13,28 +13,10 @@ const currentProjectName = computed(() => {
   return first?.worktree || first?.id || "Unknown project";
 });
 
-function selectSession(id: string) {
-  session.openSession(id);
-}
-
-function sessionTitle(s: unknown) {
-  const item = s as { id?: string; title?: string; directory?: string };
-  return item.title || item.directory || item.id || "Session";
-}
-
-function sessionId(s: unknown) {
-  return (s as { id?: string }).id || "";
-}
-
-const currentId = computed(() => {
-  const s = session.currentSession as { id?: string } | null;
-  return s?.id || "";
-});
-
 async function newSession() {
-  await workspace.createSession("New session");
-  const first = workspace.sessions[0];
-  if (first) selectSession(sessionId(first));
+  const created = await workspace.createSession("New session");
+  const id = (created as { id?: string }).id;
+  if (id) await session.openSession(id);
 }
 </script>
 
@@ -45,20 +27,8 @@ async function newSession() {
       <div class="project-name">{{ currentProjectName }}</div>
     </div>
     <div class="section">
-      <div class="section-title flex-between">
-        <span>Sessions</span>
-        <button class="icon" @click="newSession">+</button>
-      </div>
-      <ul class="list">
-        <li
-          v-for="s in workspace.sessions"
-          :key="sessionId(s)"
-          :class="['item', { active: sessionId(s) === currentId }]"
-          @click="selectSession(sessionId(s))"
-        >
-          {{ sessionTitle(s) }}
-        </li>
-      </ul>
+      <div class="section-title">Session</div>
+      <button class="new-session" @click="newSession">+ New session</button>
     </div>
   </aside>
 </template>
@@ -94,41 +64,10 @@ async function newSession() {
   color: var(--bc-core);
   word-break: break-all;
 }
-.icon {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  line-height: 1;
-}
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--bc-space-xs);
-}
-.item {
-  padding: var(--bc-space-sm) var(--bc-space-md);
-  cursor: pointer;
-  border-left: 2px solid transparent;
-  color: var(--bc-text-muted);
-  transition: background 0.12s, color 0.12s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.item:hover {
+.new-session {
+  width: 100%;
+  font-size: 12px;
+  padding: var(--bc-space-sm);
   background: var(--bc-panel-2);
-  color: var(--bc-text);
-}
-.item.active {
-  background: rgba(76, 201, 240, 0.08);
-  border-left-color: var(--bc-core);
-  color: var(--bc-text);
 }
 </style>

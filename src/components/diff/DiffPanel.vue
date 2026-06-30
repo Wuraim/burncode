@@ -4,6 +4,7 @@ import { useSessionStore } from "../../stores/session";
 
 const session = useSessionStore();
 const selected = ref<unknown>(null);
+const expanded = ref(false);
 
 function filePath(d: unknown): string {
   return (d as { file?: string }).file || "unknown";
@@ -35,9 +36,13 @@ const files = computed(() => session.diff);
 </script>
 
 <template>
-  <div class="diff-panel">
-    <div class="title">Diff inspector</div>
-    <div class="body">
+  <div class="diff-panel" :class="{ collapsed: !expanded }">
+    <div class="title" @click="expanded = !expanded">
+      <span>{{ expanded ? "▾" : "▸" }}</span>
+      <span>Diff inspector</span>
+      <span class="count">({{ files.length }})</span>
+    </div>
+    <div v-show="expanded" class="body">
       <ul class="file-list">
         <li
           v-for="d in files"
@@ -59,12 +64,14 @@ const files = computed(() => session.diff);
 
 <style scoped>
 .diff-panel {
-  height: 240px;
-  min-height: 240px;
   border-top: 1px solid var(--bc-border);
   background: var(--bc-panel);
   display: flex;
   flex-direction: column;
+}
+.diff-panel.collapsed {
+  min-height: 0;
+  height: auto;
 }
 .title {
   padding: var(--bc-space-sm) var(--bc-space-md);
@@ -73,11 +80,23 @@ const files = computed(() => session.diff);
   letter-spacing: 0.12em;
   color: var(--bc-text-dim);
   border-bottom: 1px solid var(--bc-border);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-sm);
+}
+.title:hover {
+  background: var(--bc-panel-2);
+}
+.count {
+  color: var(--bc-text-dim);
+  font-size: 10px;
 }
 .body {
-  flex: 1;
   display: flex;
   overflow: hidden;
+  max-height: 280px;
 }
 .file-list {
   width: 200px;

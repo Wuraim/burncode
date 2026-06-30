@@ -1,4 +1,4 @@
-use crate::opencode::types::{HealthResponse, SendPromptRequest};
+use crate::opencode::types::{ExecuteCommandRequest, HealthResponse, SendPromptRequest};
 use reqwest::{Client, RequestBuilder};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -61,6 +61,10 @@ impl OpencodeClient {
         self.get("/config/providers").await
     }
 
+    pub async fn get_agents(&self) -> Result<Value, String> {
+        self.get("/agent").await
+    }
+
     pub async fn get_sessions(&self) -> Result<Value, String> {
         self.get("/session").await
     }
@@ -121,6 +125,17 @@ impl OpencodeClient {
         res.json::<T>().await.map_err(|e| e.to_string())
     }
 
+    pub async fn patch<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T, String> {
+        let req = self.client.patch(self.url(path)).json(&body);
+        let res = self.auth(req).send().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        if !status.is_success() {
+            let text = res.text().await.unwrap_or_default();
+            return Err(format!("{}: {}", status, text));
+        }
+        res.json::<T>().await.map_err(|e| e.to_string())
+    }
+
     pub async fn put<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T, String> {
         let req = self.client.put(self.url(path)).json(&body);
         let res = self.auth(req).send().await.map_err(|e| e.to_string())?;
@@ -130,6 +145,96 @@ impl OpencodeClient {
             return Err(format!("{}: {}", status, text));
         }
         res.json::<T>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn update_session(&self, id: &str, title: Option<String>) -> Result<Value, String> {
+        let mut body = serde_json::Map::new();
+        if let Some(t) = title {
+            body.insert("title".to_string(), Value::String(t));
+        }
+        self.patch(
+            &format!("/session/{}", id),
+            Value::Object(body),
+        ).await
+    }
+
+    pub async fn delete_session(&self, id: &str) -> Result<bool, String> {
+        let req = self.client.delete(self.url(&format!("/session/{}", id)));
+        let res = self.auth(req).send().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        if !status.is_success() {
+            let text = res.text().await.unwrap_or_default();
+            return Err(format!("{}: {}", status, text));
+        }
+        Ok(res.json::<Value>().await.map_err(|e| e.to_string())?.as_bool().unwrap_or(false))
+    }
+
+    pub async fn respond_to_permission(
+        &self,
+        session_id: &str,
+        permission_id: &str,
+        response: &str,
+        remember: Option<bool>,
+    ) -> Result<bool, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("response".to_string(), Value::String(response.to_string()));
+        if let Some(r) = remember {
+            body.insert("remember".to_string(), Value::Bool(r));
+        }
+        let res: Value = self.post(
+            &format!("/session/{}/permissions/{}", session_id, permission_id),
+            Value::Object(body),
+        ).await?;
+        Ok(res.as_bool().unwrap_or(false))
+    }
+
+    pub async fn fork_session(&self, id: &str, message_id: Option<&str>) -> Result<Value, String> {
+        let mut body = serde_json::Map::new();
+        if let Some(mid) = message_id {
+            body.insert("messageID".to_string(), Value::String(mid.to_string()));
+        }
+        self.post(
+            &format!("/session/{}/fork", id),
+            Value::Object(body),
+        ).await
+    }
+
+    pub async fn get_commands(&self) -> Result<Value, String> {
+        self.get("/command").await
+    }
+
+    pub async fn execute_command(&self, id: &str, request: ExecuteCommandRequest) -> Result<Value, String> {
+        self.post(
+            &format!("/session/{}/command", id),
+            serde_json::to_value(request).unwrap(),
+        ).await
+    }
+
+    pub async fn abort_session(&self, id: &str) -> Result<bool, String> {
+        let res: Value = self.post(
+            &format!("/session/{}/abort", id),
+            serde_json::Value::Null,
+        ).await?;
+        Ok(res.as_bool().unwrap_or(false))
+    }
+
+    pub async fn prompt_async(&self, id: &str, request: SendPromptRequest) -> Result<(), String> {
+        self.post_empty(
+            &format!("/session/{}/prompt_async", id),
+            serde_json::to_value(request).unwrap(),
+        )
+        .await
+    }
+
+    pub async fn post_empty(&self, path: &str, body: Value) -> Result<(), String> {
+        let req = self.client.post(self.url(path)).json(&body);
+        let res = self.auth(req).send().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        if !status.is_success() {
+            let text = res.text().await.unwrap_or_default();
+            return Err(format!("{}: {}", status, text));
+        }
+        Ok(())
     }
 
     pub fn event_request(&self) -> RequestBuilder {

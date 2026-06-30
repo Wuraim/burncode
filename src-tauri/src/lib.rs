@@ -9,15 +9,20 @@ use crate::app::events::start_event_stream;
 use crate::app::state::{AppState, AppStateInner};
 use crate::commands::connection::{connect, disconnect, is_connected, load_settings, save_settings};
 use crate::commands::projects::{current_project, list_projects};
+use crate::commands::agents::list_agents;
 use crate::commands::providers::{
     list_config_providers, list_provider_auth_methods, list_providers, set_provider_auth,
 };
+use crate::commands::routing::{get_route_config, set_provider_quota};
 use crate::commands::sessions::{
-    create_session, get_diff, get_session, get_session_messages, get_todos, list_sessions,
-    send_prompt, suggest_route,
+    abort_session, create_session, delete_session, execute_command, fork_session, get_diff,
+    get_session, get_session_messages, get_todos, list_commands, list_sessions,
+    record_assistant_outcome, respond_to_permission, send_prompt, send_prompt_async,
+    suggest_route, update_session,
 };
 use crate::commands::telemetry::get_telemetry;
 use crate::opencode::client::OpencodeClient;
+use crate::store::routing_analytics::RoutingAnalyticsStore;
 use crate::store::SettingsStore;
 use std::sync::Arc;
 use tauri::Manager;
@@ -28,9 +33,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-            let settings_store = SettingsStore::new(config_dir);
+            let settings_store = SettingsStore::new(config_dir.clone());
+            let analytics_store = RoutingAnalyticsStore::new(config_dir);
+            let analytics = tauri::async_runtime::block_on(async {
+                analytics_store.load().await.unwrap_or_default()
+            });
             let state: AppState = Arc::new(tokio::sync::Mutex::new(AppStateInner::new(
                 settings_store.clone(),
+                analytics_store.clone(),
+                analytics,
             )));
             app.manage(state.clone());
 
@@ -82,11 +93,23 @@ pub fn run() {
             list_provider_auth_methods,
             list_config_providers,
             set_provider_auth,
+            get_route_config,
+            set_provider_quota,
+            list_agents,
+            abort_session,
+            delete_session,
+            update_session,
+            respond_to_permission,
+            fork_session,
+            list_commands,
+            execute_command,
             list_sessions,
             create_session,
             get_session,
             get_session_messages,
             send_prompt,
+            send_prompt_async,
+            record_assistant_outcome,
             suggest_route,
             get_todos,
             get_diff,

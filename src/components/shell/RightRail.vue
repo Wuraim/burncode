@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import TodoPanel from "../todos/TodoPanel.vue";
-import ProviderStatusPanel from "../providers/ProviderStatusPanel.vue";
-import ProviderAuthPanel from "../providers/ProviderAuthPanel.vue";
+import ProviderPanel from "../providers/ProviderPanel.vue";
 import TelemetryPanel from "../telemetry/TelemetryPanel.vue";
 </script>
 
 <template>
   <aside class="right-rail">
     <TelemetryPanel />
-    <ProviderStatusPanel />
-    <ProviderAuthPanel />
+    <ProviderPanel />
     <TodoPanel />
   </aside>
 </template>
