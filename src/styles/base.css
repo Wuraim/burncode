@@ -1,0 +1,100 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--bc-font-sans);
+  font-size: 13px;
+  color: var(--bc-text);
+  background: var(--bc-bg);
+  line-height: 1.45;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  border-radius: var(--bc-radius);
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--bc-border);
+  background: var(--bc-surface);
+  color: var(--bc-text);
+  padding: var(--bc-space-sm) var(--bc-space-md);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+button:hover {
+  border-color: var(--bc-core);
+  background: var(--bc-panel-2);
+}
+
+button.primary {
+  background: linear-gradient(90deg, var(--bc-core), var(--bc-violet));
+  color: var(--bc-bg);
+  border: none;
+  font-weight: 600;
+}
+
+button.primary:hover {
+  box-shadow: var(--bc-glow-core);
+}
+
+input,
+textarea {
+  background: var(--bc-bg);
+  border: 1px solid var(--bc-border);
+  color: var(--bc-text);
+  padding: var(--bc-space-sm) var(--bc-space-md);
+  outline: none;
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--bc-core);
+}
+
+label {
+  color: var(--bc-text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bc-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bc-text-dim);
+}
+
+pre,
+code {
+  font-family: var(--bc-font-mono);
+}

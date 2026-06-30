@@ -1,0 +1,30 @@
+:root {
+  /* Flame exhaust palette */
+  --bc-bg: #05070b;
+  --bc-panel: #0b1016;
+  --bc-panel-2: #111820;
+  --bc-surface: #17202b;
+  --bc-border: #253041;
+  --bc-text: #e8edf5;
+  --bc-text-muted: #8a97aa;
+  --bc-text-dim: #4f5d70;
+  --bc-core: #4cc9f0;
+  --bc-violet: #7b61ff;
+  --bc-magenta: #d946ef;
+  --bc-ember: #ff5a36;
+  --bc-flame: #ff9e2c;
+  --bc-white: #f3f7ff;
+  --bc-error: #ff4d2c;
+  --bc-success: #39d98a;
+
+  --bc-radius: 0px;
+  --bc-space-xs: 4px;
+  --bc-space-sm: 8px;
+  --bc-space-md: 12px;
+  --bc-space-lg: 16px;
+  --bc-space-xl: 24px;
+  --bc-font-sans: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  --bc-font-mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  --bc-glow-core: 0 0 8px rgba(76, 201, 240, 0.35);
+  --bc-glow-flame: 0 0 10px rgba(255, 90, 54, 0.45);
+}
